@@ -23,12 +23,9 @@ app.use("/analytics", require("./routes/analyticsRoutes"));
 
 app.get("/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-// Serve frontend in production
-const path = require("path");
-app.use(express.static(path.join(__dirname, "../finance-frontend/dist")));
-
-app.get(/.*/, (req, res) => {
-    res.sendFile(path.join(__dirname, "../finance-frontend/dist/index.html"));
+// Simple root route for Vercel health check
+app.get("/", (req, res) => {
+    res.json({ message: "FinanceOS Backend is fully operational on Vercel 🎉" });
 });
 
 app.use((err, req, res, next) => {
