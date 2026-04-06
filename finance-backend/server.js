@@ -14,8 +14,11 @@ app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: "Too m
 
 setupSwagger(app);
 
-connectDB();
-
+// Ensure DB connects on every serverless request before routing
+app.use(async (req, res, next) => {
+    await connectDB();
+    next();
+});
 app.use("/auth", require("./routes/authRoutes"));
 app.use("/users", require("./routes/userRoutes"));
 app.use("/records", require("./routes/recordRoutes"));
