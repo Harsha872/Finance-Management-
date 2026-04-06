@@ -6,26 +6,13 @@ exports.register = async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
 
-        // Check if email already exists
-        const { data: existing } = await supabase
-            .from("users")
-            .select("id")
-            .eq("email", email.toLowerCase().trim())
-            .single();
-
+        const { data: existing } = await supabase.from("users").select("id").eq("email", email).single();
         if (existing) return res.status(409).json({ error: "Email already registered" });
 
         const hashed = await bcrypt.hash(password, 12);
 
-        const { data: user, error } = await supabase
-            .from("users")
-            .insert([{
-                name: name.trim(),
-                email: email.toLowerCase().trim(),
-                password: hashed,
-                role: role || "admin",
-                status: "active"
-            }])
+        const { data: user, error } = await supabase.from("users")
+            .insert({ name, email, password: hashed, role: role || "admin" })
             .select("id, name, email, role, status, created_at")
             .single();
 
@@ -41,12 +28,7 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        const { data: user, error } = await supabase
-            .from("users")
-            .select("*")
-            .eq("email", email.toLowerCase().trim())
-            .single();
-
+        const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single();
         if (error || !user) return res.status(404).json({ error: "User not found" });
         if (user.status === "inactive") return res.status(403).json({ error: "Account deactivated" });
 
@@ -67,8 +49,7 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
     try {
-        const { data: user, error } = await supabase
-            .from("users")
+        const { data: user, error } = await supabase.from("users")
             .select("id, name, email, role, status, created_at")
             .eq("id", req.user.id)
             .single();

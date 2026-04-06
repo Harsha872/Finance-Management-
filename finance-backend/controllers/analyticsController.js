@@ -2,28 +2,23 @@ const supabase = require("../config/supabase");
 const { generatePDF } = require("../utils/pdfService");
 
 const getFinancialData = async () => {
-    const { data: records, error } = await supabase
-        .from("records")
-        .select("*")
-        .eq("is_deleted", false);
-
-    if (error) throw error;
+    const { data: records } = await supabase.from("records").select("type, amount, category, date").eq("is_deleted", false);
 
     let income = 0, expense = 0;
     const categoryMap = {};
     const monthlyMap = {};
 
     (records || []).forEach(r => {
-        if (r.type === "income") income += r.amount;
-        else expense += r.amount;
+        if (r.type === "income") income += Number(r.amount);
+        else expense += Number(r.amount);
 
         if (r.type === "expense") {
-            categoryMap[r.category] = (categoryMap[r.category] || 0) + r.amount;
+            categoryMap[r.category] = (categoryMap[r.category] || 0) + Number(r.amount);
         }
 
         const key = new Date(r.date).toISOString().slice(0, 7);
         if (!monthlyMap[key]) monthlyMap[key] = { income: 0, expense: 0 };
-        monthlyMap[key][r.type] += r.amount;
+        monthlyMap[key][r.type] += Number(r.amount);
     });
 
     return { income, expense, balance: income - expense, categoryMap, monthlyMap, total: (records || []).length };
@@ -32,20 +27,18 @@ const getFinancialData = async () => {
 exports.getSummary = async (req, res) => {
     try {
         const { income, expense, balance, categoryMap } = await getFinancialData();
-        const { data: recentRecords } = await supabase
-            .from("records")
-            .select("*")
-            .eq("is_deleted", false)
-            .order("date", { ascending: false })
-            .limit(5);
+
+        const { data: recent } = await supabase.from("records")
+            .select("*").eq("is_deleted", false).order("date", { ascending: false }).limit(5);
 
         const topCategory = Object.entries(categoryMap).sort((a, b) => b[1] - a[1])[0];
+
         res.json({
             totalIncome: income,
             totalExpense: expense,
             balance,
             topExpenseCategory: topCategory ? { name: topCategory[0], amount: topCategory[1] } : null,
-            recentActivity: recentRecords || []
+            recentActivity: recent || []
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -73,8 +66,7 @@ exports.getInsights = async (req, res) => {
         }
 
         if (expense > income) {
-            const overspend = (expense - income).toLocaleString("en-IN");
-            insights.push({ type: "negative", title: "Overspending detected", message: `Your expenses exceed income by ₹${overspend}. This is unsustainable. Immediate budget review recommended.` });
+            insights.push({ type: "negative", title: "Overspending detected", message: `Your expenses exceed income by ₹${(expense - income).toLocaleString("en-IN")}. Immediate budget review recommended.` });
         }
 
         const topCategories = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
@@ -87,17 +79,16 @@ exports.getInsights = async (req, res) => {
         }
 
         if (months.length >= 3) {
-            const lastThree = months.slice(-3).map(m => monthlyMap[m]);
-            const trend = lastThree[2].expense - lastThree[0].expense;
-            if (trend > 0) {
-                insights.push({ type: "warning", title: "Rising expense trend", message: `Your expenses have grown over the last 3 months. Monitor this trend before it becomes a problem.` });
+            const last = months.slice(-3).map(m => monthlyMap[m]);
+            if (last[2].expense > last[0].expense) {
+                insights.push({ type: "warning", title: "Rising expense trend", message: "Your expenses have grown over the last 3 months. Monitor this before it becomes a problem." });
             } else {
                 insights.push({ type: "positive", title: "Expense trend improving", message: "Your expenses have been declining over the last 3 months. Great discipline." });
             }
         }
 
         if (income > 0 && expense / income > 0.9) {
-            insights.push({ type: "negative", title: "Emergency fund risk", message: "You are spending over 90% of your income. You likely have no buffer for unexpected expenses. Build an emergency fund first." });
+            insights.push({ type: "negative", title: "Emergency fund risk", message: "You are spending over 90% of your income. Build an emergency fund to cover unexpected expenses." });
         }
 
         res.json({ insights, income, expense, balance, savingRate: parseFloat(savingRate.toFixed(2)), categoryBreakdown: categoryMap });
@@ -122,16 +113,14 @@ exports.getTrends = async (req, res) => {
 
 exports.getCategoryBreakdown = async (req, res) => {
     try {
-        const { data: records } = await supabase
-            .from("records")
-            .select("type, category, amount")
-            .eq("is_deleted", false);
+        const { data: records } = await supabase.from("records").select("type, amount, category").eq("is_deleted", false);
 
         const income = {}, expense = {};
         (records || []).forEach(r => {
             const map = r.type === "income" ? income : expense;
-            map[r.category] = (map[r.category] || 0) + r.amount;
+            map[r.category] = (map[r.category] || 0) + Number(r.amount);
         });
+
         res.json({ income, expense });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -141,11 +130,8 @@ exports.getCategoryBreakdown = async (req, res) => {
 exports.downloadReport = async (req, res) => {
     try {
         const { income, expense, balance, categoryMap } = await getFinancialData();
-        const { data: records } = await supabase
-            .from("records")
-            .select("*")
-            .eq("is_deleted", false)
-            .order("date", { ascending: false });
+        const { data: records } = await supabase.from("records")
+            .select("*").eq("is_deleted", false).order("date", { ascending: false });
 
         const buffer = await generatePDF({ income, expense, balance, categoryMap, records: records || [] });
         res.set({ "Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=finance-report.pdf" });
@@ -159,7 +145,7 @@ exports.askAssistant = async (req, res) => {
     try {
         const { question } = req.body;
         const { income, expense, balance, categoryMap, total } = await getFinancialData();
-
+        
         let answer = "I'm not sure how to answer that just yet.";
 
         if (question === "1") {
