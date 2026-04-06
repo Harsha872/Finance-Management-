@@ -8,7 +8,7 @@ exports.getUsers = async (req, res) => {
             .order("created_at", { ascending: false });
 
         if (error) throw error;
-        res.json(users);
+        res.json((users || []).map(u => ({ ...u, _id: u.id })));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -29,7 +29,7 @@ exports.updateRole = async (req, res) => {
 
         if (error) throw error;
         if (!user) return res.status(404).json({ error: "User not found" });
-        res.json(user);
+        res.json({ ...user, _id: user.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -50,7 +50,7 @@ exports.updateStatus = async (req, res) => {
 
         if (error) throw error;
         if (!user) return res.status(404).json({ error: "User not found" });
-        res.json(user);
+        res.json({ ...user, _id: user.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

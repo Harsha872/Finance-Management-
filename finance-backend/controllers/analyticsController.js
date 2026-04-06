@@ -38,7 +38,7 @@ exports.getSummary = async (req, res) => {
             totalExpense: expense,
             balance,
             topExpenseCategory: topCategory ? { name: topCategory[0], amount: topCategory[1] } : null,
-            recentActivity: recent || []
+            recentActivity: (recent || []).map(r => ({ ...r, _id: r.id }))
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -10,7 +10,7 @@ exports.createRecord = async (req, res) => {
             .single();
 
         if (error) throw error;
-        res.status(201).json(data);
+        res.status(201).json({ ...data, _id: data.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -38,7 +38,7 @@ exports.getRecords = async (req, res) => {
         if (error) throw error;
 
         res.json({
-            records: data,
+            records: (data || []).map(r => ({ ...r, _id: r.id })),
             pagination: { total: count, page: pageNum, limit: limitNum, totalPages: Math.ceil(count / limitNum) }
         });
     } catch (err) {
@@ -56,7 +56,7 @@ exports.updateRecord = async (req, res) => {
 
         if (error) throw error;
         if (!data) return res.status(404).json({ error: "Record not found" });
-        res.json(data);
+        res.json({ ...data, _id: data.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

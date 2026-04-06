@@ -18,7 +18,7 @@ exports.register = async (req, res) => {
 
         if (error) throw error;
 
-        res.status(201).json({ message: "Registered successfully", user });
+        res.status(201).json({ message: "Registered successfully", user: { ...user, _id: user.id } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -41,7 +41,7 @@ exports.login = async (req, res) => {
             { expiresIn: "1d" }
         );
 
-        res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+        res.json({ token, user: { id: user.id, _id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -55,7 +55,7 @@ exports.getMe = async (req, res) => {
             .single();
 
         if (error || !user) return res.status(404).json({ error: "User not found" });
-        res.json(user);
+        res.json({ ...user, _id: user.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
