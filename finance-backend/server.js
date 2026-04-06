@@ -7,6 +7,8 @@ const setupSwagger = require("./utils/swagger");
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(cors({ origin: true, credentials: true }));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: "Too many requests" } }));
