@@ -1,13 +1,20 @@
 const cron = require("node-cron");
-const Record = require("../models/record");
+const supabase = require("../config/supabase");
 const { sendEmail } = require("../utils/emailService");
 
 const THRESHOLD = parseInt(process.env.EXPENSE_ALERT_THRESHOLD) || 10000;
 
 const getStats = async () => {
-    const records = await Record.find({ isDeleted: false });
+    const { data: records } = await supabase
+        .from("records")
+        .select("type, amount")
+        .eq("is_deleted", false);
+
     let income = 0, expense = 0;
-    records.forEach(r => { if (r.type === "income") income += r.amount; else expense += r.amount; });
+    (records || []).forEach(r => {
+        if (r.type === "income") income += r.amount;
+        else expense += r.amount;
+    });
     return { income, expense, balance: income - expense };
 };
 
@@ -45,12 +52,22 @@ cron.schedule("0 * * * *", async () => {
 cron.schedule("0 9 1 * *", async () => {
     try {
         const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const end = new Date(now.getFullYear(), now.getMonth(), 0);
-        const records = await Record.find({ isDeleted: false, date: { $gte: start, $lte: end } });
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+        const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString();
+
+        const { data: records } = await supabase
+            .from("records")
+            .select("type, amount")
+            .eq("is_deleted", false)
+            .gte("date", start)
+            .lte("date", end);
+
         let income = 0, expense = 0;
-        records.forEach(r => { if (r.type === "income") income += r.amount; else expense += r.amount; });
-        const month = start.toLocaleString("default", { month: "long", year: "numeric" });
+        (records || []).forEach(r => {
+            if (r.type === "income") income += r.amount;
+            else expense += r.amount;
+        });
+        const month = new Date(start).toLocaleString("default", { month: "long", year: "numeric" });
         await sendEmail(`Monthly Report — ${month}`, `
       <h2 style="font-family:sans-serif">${month} Summary</h2>
       <p style="font-family:sans-serif">Income: Rs.${income.toLocaleString("en-IN")} | Expense: Rs.${expense.toLocaleString("en-IN")} | Saved: Rs.${(income - expense).toLocaleString("en-IN")}</p>
