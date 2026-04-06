@@ -1,9 +1,24 @@
-const Record = require("../models/record");
+const supabase = require("../config/supabase");
 
 exports.createRecord = async (req, res) => {
     try {
         const { amount, type, category, note, date } = req.body;
-        const record = await Record.create({ amount, type, category, note, date: date || new Date(), createdBy: req.user.id });
+
+        const { data: record, error } = await supabase
+            .from("records")
+            .insert([{
+                amount: parseFloat(amount),
+                type,
+                category: category.trim(),
+                note: note || "",
+                date: date || new Date().toISOString(),
+                created_by: req.user.id,
+                is_deleted: false
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
         res.status(201).json(record);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -13,21 +28,37 @@ exports.createRecord = async (req, res) => {
 exports.getRecords = async (req, res) => {
     try {
         const { type, category, startDate, endDate, search, page = 1, limit = 10 } = req.query;
-        const filter = { isDeleted: false };
-        if (type) filter.type = type;
-        if (category) filter.category = { $regex: category, $options: "i" };
-        if (startDate || endDate) {
-            filter.date = {};
-            if (startDate) filter.date.$gte = new Date(startDate);
-            if (endDate) filter.date.$lte = new Date(endDate);
-        }
-        if (search) filter.note = { $regex: search, $options: "i" };
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-        const [records, total] = await Promise.all([
-            Record.find(filter).sort({ date: -1 }).skip(skip).limit(parseInt(limit)).populate("createdBy", "name"),
-            Record.countDocuments(filter)
-        ]);
-        res.json({ records, pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) } });
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const from = (pageNum - 1) * limitNum;
+        const to = from + limitNum - 1;
+
+        let query = supabase
+            .from("records")
+            .select("*, users(name)", { count: "exact" })
+            .eq("is_deleted", false)
+            .order("date", { ascending: false })
+            .range(from, to);
+
+        if (type) query = query.eq("type", type);
+        if (category) query = query.ilike("category", `%${category}%`);
+        if (search) query = query.ilike("note", `%${search}%`);
+        if (startDate) query = query.gte("date", new Date(startDate).toISOString());
+        if (endDate) query = query.lte("date", new Date(endDate).toISOString());
+
+        const { data: records, error, count } = await query;
+
+        if (error) throw error;
+
+        res.json({
+            records,
+            pagination: {
+                total: count,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(count / limitNum)
+            }
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -35,7 +66,14 @@ exports.getRecords = async (req, res) => {
 
 exports.updateRecord = async (req, res) => {
     try {
-        const record = await Record.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const { data: record, error } = await supabase
+            .from("records")
+            .update(req.body)
+            .eq("id", req.params.id)
+            .select()
+            .single();
+
+        if (error) throw error;
         if (!record) return res.status(404).json({ error: "Record not found" });
         res.json(record);
     } catch (err) {
@@ -45,7 +83,14 @@ exports.updateRecord = async (req, res) => {
 
 exports.deleteRecord = async (req, res) => {
     try {
-        const record = await Record.findByIdAndUpdate(req.params.id, { isDeleted: true }, { new: true });
+        const { data: record, error } = await supabase
+            .from("records")
+            .update({ is_deleted: true })
+            .eq("id", req.params.id)
+            .select()
+            .single();
+
+        if (error) throw error;
         if (!record) return res.status(404).json({ error: "Record not found" });
         res.json({ message: "Record deleted" });
     } catch (err) {

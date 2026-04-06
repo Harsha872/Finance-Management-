@@ -1,13 +1,19 @@
-const Record = require("../models/record");
+const supabase = require("../config/supabase");
 const { generatePDF } = require("../utils/pdfService");
 
 const getFinancialData = async () => {
-    const records = await Record.find({ isDeleted: false });
+    const { data: records, error } = await supabase
+        .from("records")
+        .select("*")
+        .eq("is_deleted", false);
+
+    if (error) throw error;
+
     let income = 0, expense = 0;
     const categoryMap = {};
     const monthlyMap = {};
 
-    records.forEach(r => {
+    (records || []).forEach(r => {
         if (r.type === "income") income += r.amount;
         else expense += r.amount;
 
@@ -20,20 +26,26 @@ const getFinancialData = async () => {
         monthlyMap[key][r.type] += r.amount;
     });
 
-    return { income, expense, balance: income - expense, categoryMap, monthlyMap, total: records.length };
+    return { income, expense, balance: income - expense, categoryMap, monthlyMap, total: (records || []).length };
 };
 
 exports.getSummary = async (req, res) => {
     try {
         const { income, expense, balance, categoryMap } = await getFinancialData();
-        const recentRecords = await Record.find({ isDeleted: false }).sort({ date: -1 }).limit(5);
+        const { data: recentRecords } = await supabase
+            .from("records")
+            .select("*")
+            .eq("is_deleted", false)
+            .order("date", { ascending: false })
+            .limit(5);
+
         const topCategory = Object.entries(categoryMap).sort((a, b) => b[1] - a[1])[0];
         res.json({
             totalIncome: income,
             totalExpense: expense,
             balance,
             topExpenseCategory: topCategory ? { name: topCategory[0], amount: topCategory[1] } : null,
-            recentActivity: recentRecords
+            recentActivity: recentRecords || []
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -110,9 +122,13 @@ exports.getTrends = async (req, res) => {
 
 exports.getCategoryBreakdown = async (req, res) => {
     try {
-        const records = await Record.find({ isDeleted: false });
+        const { data: records } = await supabase
+            .from("records")
+            .select("type, category, amount")
+            .eq("is_deleted", false);
+
         const income = {}, expense = {};
-        records.forEach(r => {
+        (records || []).forEach(r => {
             const map = r.type === "income" ? income : expense;
             map[r.category] = (map[r.category] || 0) + r.amount;
         });
@@ -125,8 +141,13 @@ exports.getCategoryBreakdown = async (req, res) => {
 exports.downloadReport = async (req, res) => {
     try {
         const { income, expense, balance, categoryMap } = await getFinancialData();
-        const records = await Record.find({ isDeleted: false }).sort({ date: -1 });
-        const buffer = await generatePDF({ income, expense, balance, categoryMap, records });
+        const { data: records } = await supabase
+            .from("records")
+            .select("*")
+            .eq("is_deleted", false)
+            .order("date", { ascending: false });
+
+        const buffer = await generatePDF({ income, expense, balance, categoryMap, records: records || [] });
         res.set({ "Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=finance-report.pdf" });
         res.send(buffer);
     } catch (err) {
@@ -138,7 +159,7 @@ exports.askAssistant = async (req, res) => {
     try {
         const { question } = req.body;
         const { income, expense, balance, categoryMap, total } = await getFinancialData();
-        
+
         let answer = "I'm not sure how to answer that just yet.";
 
         if (question === "1") {
@@ -159,7 +180,7 @@ exports.askAssistant = async (req, res) => {
 
         setTimeout(() => {
             res.json({ answer });
-        }, 800); // Simulate human typing delay
+        }, 800);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
